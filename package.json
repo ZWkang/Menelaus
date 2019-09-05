@@ -1,0 +1,58 @@
+{
+	"name": "menelaus",
+	"version": "0.0.0",
+	"description": "My impeccable module",
+	"license": "MIT",
+	"repository": "ZWkang/menelaus",
+	"author": {
+		"name": "ZWkang",
+		"email": "907747874@qq.com"
+	},
+	"engines": {
+		"node": ">=8"
+	},
+	"scripts": {
+		"test": "ava --verbose",
+		"lint": "xo"
+	},
+	"files": [
+		"index.js"
+	],
+	"keywords": [
+		""
+	],
+	"main": "index.js",
+	"dependencies": {
+		"fs-extra": "^8.1.0",
+		"gradient-string": "^1.2.0",
+		"handlebars": "^4.1.2",
+		"js-yaml": "^3.13.1",
+		"linecitats": "^0.3.0",
+		"markdown-it": "^9.1.0",
+		"mock-fs": "^4.10.1",
+		"node-emoji": "^1.10.0",
+		"progress": "^2.0.3",
+		"recursive-readdir": "^2.2.2",
+		"remove-markdown": "^0.3.0",
+		"terminal-link": "^2.0.0",
+		"ws": "^7.1.2"
+	},
+	"devDependencies": {
+		"ava": "^2.1.0",
+		"chalk": "^2.4.2",
+		"commander": "^3.0.0",
+		"cz-conventional-changelog": "^3.0.2",
+		"meow": "^5.0.0",
+		"ora": "^3.4.0",
+		"update-notifier": "^3.0.1",
+		"xo": "^0.24.0"
+	},
+	"config": {
+		"commitizen": {
+			"path": "./node_modules/cz-conventional-changelog"
+		}
+	},
+	"bin": {
+		"menelaus": "./bin/index.js"
+	}
+}

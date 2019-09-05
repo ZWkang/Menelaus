@@ -1,38 +1,59 @@
-const updateNotifier = require('update-notifier');
-const pkg = require('../package.json');
-const Reporter = require('./reporter');
-const handlebartemplate = require('./handlebartemplate');
 const fs = require('fs');
-const recursive = require('recursive-readdir');
 const path = require('path');
-const resolveYamlAndMarkdown = require('./resolveYamlAndMarkdown');
 const fsE = require('fs-extra');
-const router = require('./generatorRouter');
-const gradient = require('./gradient');
+const recursive = require('recursive-readdir');
+const updateNotifier = require('update-notifier');
 
+const home = require('./home');
+
+// ws server
 const wss = require('./wsServer');
 
+// 上下文
 const Context = require('./context');
 
+// reporter
+const Reporter = require('./reporter');
+
+// 进度条
 const Progress = require('./progress');
+
+// 亮色字体
+const gradient = require('./gradient');
+
+// package.json
+const pkg = require('../package.json');
+
+// 根据当前文章目录生成路由
+const router = require('./generatorRouter');
+
+// 静态服务器相关
+const linecitats = require('linecitats/lib/server');
+const koa = require('koa');
+
+// 处理handlebar
+const handlebartemplate = require('./handlebartemplate');
+
+// 处理md文件
+const resolveYamlAndMarkdown = require('./resolveYamlAndMarkdown');
+
+
+
+
 
 updateNotifier({
 	pkg
 }).notify();
 
-const delay = (ms) => {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-};
-
-const defaultOpts = {
-	dest: '/Users/zhouwenkang/Desktop/git-lib/Menelaus/dist',
-	src: '/Users/zhouwenkang/Desktop/git-lib/Menelaus',
-	configJSON: '/Users/zhouwenkang/Desktop/git-lib/Menelaus/config.json',
-	postFloder: 'post',
-	type: [],
-	themePath: 'source',
-	postTemplate: 'post.html'
-};
+// const defaultOpts = {
+// 	dest: '/Users/zhouwenkang/Desktop/git-lib/Menelaus/dist',
+// 	src: '/Users/zhouwenkang/Desktop/git-lib/Menelaus',
+// 	configJSON: '/Users/zhouwenkang/Desktop/git-lib/Menelaus/config.json',
+// 	postFloder: 'post',
+// 	type: [],
+// 	themePath: 'source',
+// 	postTemplate: 'post.html'
+// };
 
 function Menelaus({
 	globalContext,
@@ -40,7 +61,8 @@ function Menelaus({
 	postFloder,
 	destFloder,
 	themeFloder,
-	postTemplateFilename
+	postTemplateFilename,
+	watch
 }) {
 	this.context = new Context(globalContext);
 	this.workDirectory = workDirectory;
@@ -57,15 +79,15 @@ function Menelaus({
 		this.themeFloder,
 		this.postTemplateFilename
 	);
-
 	(async () => {
 		await fsE.ensureDir(this.destFullPath);
 		await fsE.ensureDir(this.postFullPath);
 		await fsE.ensureDir(this.themeFullPath);
-		await this.bundle();
+		if(watch) {
+			this.wsServer = new wss(8888)
+			await this.bundle();
+		}
 	})();
-
-	this.wsServer = new wss(8888);
 }
 
 async function getAllFileFromFloder(floderPath, ignore = []) {
@@ -74,28 +96,27 @@ async function getAllFileFromFloder(floderPath, ignore = []) {
 		return result;
 	} catch (e) {
 		Reporter.error(e.message);
-		return nnull;
+		return null;
 	}
 }
 
 Menelaus.prototype.bundle = async function() {
-	const allPosts = await getAllFileFromFloder(this.postFullPath);
-	const allThemes = await getAllFileFromFloder(this.themeFullPath);
+	const allPosts = (await getAllFileFromFloder(this.postFullPath)) || [];
+	const allThemes = (await getAllFileFromFloder(this.themeFullPath)) || [];
 
 	const allProgressPath = allPosts.concat(allThemes);
 
 	const bundleInstanceProgress = new Progress('Menelaus [ :bar ] :current/:total :filename', {
 		total: allProgressPath.length,
 		callback: () => {
-			Reporter.success('all progress done');
+			Reporter.success('all progress done,');
 		}
 	}).init();
 
 	for (let index = 0; index < allProgressPath.length; index++) {
-		await delay(100);
 		const inProgressPath = allProgressPath[index];
 		const extName = path.extname(inProgressPath);
-		// console.log(extName);
+
 		if (inProgressPath === this.postTemplateFullPath) {
 		} else if (extName === '.html') {
 			await this.handleHtmlSource(inProgressPath);
@@ -108,6 +129,7 @@ Menelaus.prototype.bundle = async function() {
 			filename: inProgressPath
 		});
 	}
+	return 
 };
 
 const spinner = require('./spinner');
@@ -118,8 +140,6 @@ Menelaus.prototype.handleOneFileProgress = async function(inProgressPath) {
 		for (let post of allPosts) {
 			await this.handleOneFileProgress(post);
 		}
-		this.wsServer.emitmessage();
-
 		return;
 	}
 
@@ -132,8 +152,6 @@ Menelaus.prototype.handleOneFileProgress = async function(inProgressPath) {
 	} else {
 		await this.handleStaticSource(inProgressPath);
 	}
-	this.wsServer.emitmessage();
-
 	spinner.succeed(gradient(`succeed with ${inProgressPath}`));
 };
 
@@ -148,41 +166,17 @@ Menelaus.prototype.clean = async function(filePath) {
 
 Menelaus.prototype.handleGetFile = async function(filePath, key) {
 	let fileContent;
-	if (key) {
-		key = Symbol.for(key);
-		fileContent = await fsE.readFile(filePath);
-		this[key] = fileContent.toString('utf-8');
-		return this[key];
-	}
+	// if (key) {
+	// 	key = Symbol.for(key);
+	// 	fileContent = await fsE.readFile(filePath);
+	// 	this[key] = fileContent.toString('utf-8');
+	// 	return this[key];
+	// }
 	fileContent = await fsE.readFile(filePath);
 	return fileContent.toString('utf-8');
 };
 
-function handleInjectListener(content) {
-	const listenString = `
-	<script>
-    const ws = new WebSocket('ws://127.0.0.1:8888')
 
-    ws.onmessage = function(data) {
-        let parseData
-        try {
-            parseData = JSON.parse(data.data)
-        }catch(e) {
-            throw e;
-        }
-        if(parseData.type === 'reload') {
-			location.reload()
-			return
-        }
-    }
-    
-	</script>
-	
-	
-	`;
-	content = content.replace(/(<\/body>)/, listenString + RegExp.$1);
-	return content;
-}
 
 //
 Menelaus.prototype.handlePostTemplate = async function(postPath) {
@@ -235,10 +229,12 @@ Menelaus.prototype.watch = async function() {
 	new Watcher([this.themeFullPath, this.postFullPath], {}).listen(
 		async (filePath) => {
 			await this.handleOneFileProgress(filePath);
+			this.wsServer.emitmessage();
 		},
 		async (filepath) => {
 			await this.clean();
 			await this.bundle();
+			this.wsServer.emitmessage();
 		},
 		(e) => {
 			console.log(e.message);
@@ -246,33 +242,65 @@ Menelaus.prototype.watch = async function() {
 	);
 };
 
-const m = new Menelaus({
-	workDirectory: defaultOpts.src,
-	postFloder: 'post',
-	destFloder: 'dist',
-	themeFloder: 'source',
-	postTemplateFilename: 'post.html',
-	globalContext: {name: '夸张的周文康'}
-});
 
-// module.exports = Menelaus;
 
-const linecitats = require('linecitats/lib/server');
-const koa = require('koa');
-
-Menelaus.prototype.startStaticServer = function() {
+Menelaus.prototype.startStaticServer = function(config) {
 	const app = new koa();
 	const ll = new linecitats({
-		dir: '../dist'
+		...config,
+		dir: this.destFloder
 	});
+	console.log(this.destFullPath)
+	// app.use(async (ctx, next) => {
+	// 	ctx.body = {
+	// 		aaa: 'true'
+	// 	}
+	// })
 	app.use(ll.middleware());
 	app.listen(8000, () => {
 		console.log('aaa');
 	});
 };
 
-(async () => {
-	// await m.bundle();
-	await m.startStaticServer();
-	// console.log(m);
-})();
+Menelaus.loadFileToString = function(str) {
+	const fileFullPath = path.join(process.cwd(), str);
+	const hasFile = fsE.existsSync(fileFullPath);
+	const isFile = !fs.statSync(fileFullPath).isDirectory();
+
+	if (hasFile && isFile) {
+		if (~['json', 'js'].indexOf(path.extname(fileFullPath))) {
+			return fsE.readFileSync(fileFullPath).toString('utf-8');
+		} else {
+			return require(fileFullPath);
+		}
+	}
+	return '';
+};
+
+function handleInjectListener(content) {
+	const listenString = `
+	<script>
+    const ws = new WebSocket('ws://127.0.0.1:8888')
+    ws.onmessage = function(data) {
+        let parseData
+        try {
+            parseData = JSON.parse(data.data)
+        }catch(e) {
+            throw e;
+        }
+        if(parseData.type === 'reload') {
+			location.reload()
+			return
+        }
+    }
+	</script>
+	
+	`;
+	content = content.replace(/(<\/body>)/, listenString + '<\/body>');
+	return content;
+}
+
+
+Menelaus.cli = require('commander');
+
+module.exports = Menelaus;
